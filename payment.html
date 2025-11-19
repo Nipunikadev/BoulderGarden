@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Payment Page</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uikit@3.17.7/dist/css/uikit.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/uikit@3.17.7/dist/js/uikit.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/uikit@3.17.7/dist/js/uikit-icons.min.js"></script>
+
+  <!-- Replace YOUR_PAYPAL_CLIENT_ID with your real PayPal Client ID -->
+  <script src="https://www.paypal.com/sdk/js?client-id=YOUR_PAYPAL_CLIENT_ID&currency=USD"></script>
+
+  <style>
+    #card-preview {
+      width: 100%;
+      max-width: 400px;
+      margin: 15px auto;
+      padding: 20px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, #1a1f71, #3c3c3c);
+      color: white;
+      font-family: 'Courier New', monospace;
+      position: relative;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    }
+    #card-preview .card-number { font-size: 1.2em; letter-spacing: 2px; margin-bottom: 15px; }
+    #card-preview .card-expiry, #card-preview .card-cvv { font-size: 0.9em; }
+    #card-preview .card-brand {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      width: 60px;
+      height: 40px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #card-preview .card-brand img {
+      width: 60px;
+      height: 40px;
+      object-fit: contain;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+<div class="uk-container uk-margin-large-top uk-text-center">
+  <h3>Payment Details</h3>
+
+  <form id="payment-form" class="uk-text-left uk-width-1-2@m uk-align-center">
+    <label>Email:</label>
+    <input class="uk-input uk-margin-small-bottom" name="email" type="email" required>
+
+    <label>Arrival Date:</label>
+    <input class="uk-input uk-margin-small-bottom" name="arrival" type="text" required>
+
+    <label>Departure Date:</label>
+    <input class="uk-input uk-margin-small-bottom" name="departure" type="text" required>
+
+    <label>Number of Guests:</label>
+    <input class="uk-input uk-margin-small-bottom" name="guests" type="number" required>
+
+    <label>Room Type:</label>
+    <input class="uk-input uk-margin-small-bottom" name="room" type="text" required>
+
+    <label>Payment Amount (USD):</label>
+    <input class="uk-input uk-margin-small-bottom" name="amount" type="text" readonly>
+
+    <label>Payment Method:</label>
+    <select class="uk-select uk-margin-small-bottom" name="payment" required>
+      <option value="">Select Payment Method</option>
+      <option value="card">Credit/Debit Card</option>
+      <option value="paypal">PayPal</option>
+      <option value="bank">Bank Transfer</option>
+      <option value="cash">Pay at Hotel</option>
+    </select>
+
+    <!-- CARD PAYMENT -->
+    <div id="card-form" class="uk-margin-top uk-hidden">
+      <div id="card-preview">
+        <div class="card-brand" id="card-brand"></div>
+        <div class="card-number" id="preview-number">#### #### #### ####</div>
+        <div class="uk-flex uk-flex-between">
+          <div class="card-expiry" id="preview-expiry">MM/YY</div>
+          <div class="card-cvv" id="preview-cvv">CVV</div>
+        </div>
+      </div>
+
+      <div class="uk-card uk-card-default uk-card-body uk-border-rounded uk-animation-slide-bottom-small">
+        <label>Card Number</label>
+        <input id="card-number" class="uk-input uk-border-rounded" type="text" placeholder="1234 5678 9012 3456" maxlength="19" pattern="^\d{4}\s\d{4}\s\d{4}\s\d{4}$" required>
+
+        <div class="uk-grid-small uk-margin-small-top" data-uk-grid>
+          <div class="uk-width-1-2">
+            <label>Expiry Date</label>
+            <input id="expiry-date" class="uk-input uk-border-rounded" type="text" placeholder="MM/YY" maxlength="5" required>
+          </div>
+          <div class="uk-width-1-2">
+            <label>CVV</label>
+            <input id="cvv" class="uk-input uk-border-rounded" type="text" placeholder="123 or 1234" maxlength="4" required>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAYPAL -->
+    <div class="uk-margin-top uk-text-center" id="paypal-container" style="display:none;">
+      <div id="paypal-button-container"></div>
+    </div>
+
+    <!-- BANK TRANSFER -->
+    <div class="uk-margin-top uk-text-center uk-hidden" id="bank-instructions">
+      <p>Please transfer the payment to the following bank account:</p>
+      <p><strong>Bank:</strong> ABC Bank</p>
+      <p><strong>Account Number:</strong> 123456789</p>
+      <p>After transferring, your booking will be confirmed.</p>
+    </div>
+
+    <!-- PAY AT HOTEL -->
+    <div class="uk-margin-top uk-text-center uk-hidden" id="cash-instructions">
+      <p>You can pay at the hotel during check-in.</p>
+    </div>
+
+    <div class="uk-margin-top uk-text-center">
+      <button class="uk-button uk-button-primary uk-border-rounded" type="submit">Proceed to Pay</button>
+    </div>
+  </form>
+</div>
+
+<!-- MODALS -->
+<div id="loading-modal" data-uk-modal>
+  <div class="uk-modal-dialog uk-modal-body uk-border-rounded uk-text-center">
+    <span data-uk-spinner="ratio: 2"></span>
+    <h4 class="uk-margin-top">Processing Payment...</h4>
+  </div>
+</div>
+
+<div id="thankyou-modal" data-uk-modal>
+  <div class="uk-modal-dialog uk-modal-body uk-border-rounded uk-text-center">
+    <h3 class="uk-modal-title">Thank You!</h3>
+    <p>Your booking has been successfully completed.</p>
+    <button class="uk-button uk-button-primary uk-border-rounded" onclick="window.location.href='index.html'">Back to Home</button>
+  </div>
+</div>
+
+<script>
+  // Auto-fill from bookingData (if user came from booking form)
+  window.addEventListener('DOMContentLoaded', () => {
+    const data = JSON.parse(localStorage.getItem('bookingData'));
+    if (data) {
+      form.email.value = data.email || '';
+      form.arrival.value = data.arrival || '';
+      form.departure.value = data.departure || '';
+      form.guests.value = data.guests || '';
+      form.room.value = data.room || '';
+      form.amount.value = data.amount || '';
+    }
+  });
+
+  const form = document.getElementById('payment-form');
+  const paymentSelect = form.querySelector('select[name="payment"]');
+  const cardForm = document.getElementById('card-form');
+  const paypalContainer = document.getElementById('paypal-container');
+  const bankInstructions = document.getElementById('bank-instructions');
+  const cashInstructions = document.getElementById('cash-instructions');
+
+  function updatePaymentForm() {
+    cardForm.classList.add('uk-hidden');
+    paypalContainer.style.display = 'none';
+    bankInstructions.classList.add('uk-hidden');
+    cashInstructions.classList.add('uk-hidden');
+
+    if (paymentSelect.value === 'card') cardForm.classList.remove('uk-hidden');
+    else if (paymentSelect.value === 'paypal') {
+      paypalContainer.style.display = 'block';
+      renderPaypalButton();
+    }
+    else if (paymentSelect.value === 'bank') bankInstructions.classList.remove('uk-hidden');
+    else if (paymentSelect.value === 'cash') cashInstructions.classList.remove('uk-hidden');
+  }
+
+  paymentSelect.addEventListener('change', updatePaymentForm);
+
+  // Card Preview + Brand Detection
+  const cardNumberInput = document.getElementById('card-number');
+  const expiryInput = document.getElementById('expiry-date');
+  const cvvInput = document.getElementById('cvv');
+  const previewNumber = document.getElementById('preview-number');
+  const previewExpiry = document.getElementById('preview-expiry');
+  const previewCVV = document.getElementById('preview-cvv');
+  const cardBrandDiv = document.getElementById('card-brand');
+
+  const brands = {
+    visa: 'https://upload.wikimedia.org/wikipedia/commons/4/41/Visa_Logo.png',
+    mastercard: 'https://upload.wikimedia.org/wikipedia/commons/0/04/Mastercard-logo.png',
+    amex: 'https://upload.wikimedia.org/wikipedia/commons/3/30/American_Express_logo_%282018%29.svg',
+    discover: 'https://upload.wikimedia.org/wikipedia/commons/5/53/Discover_Card_logo.svg'
+  };
+
+  function detectCardBrand(number) {
+    number = number.replace(/\s/g, '');
+    if (/^4/.test(number)) return 'visa';
+    if (/^5[1-5]/.test(number)) return 'mastercard';
+    if (/^3[47]/.test(number)) return 'amex';
+    if (/^6/.test(number)) return 'discover';
+    return '';
+  }
+
+  cardNumberInput.addEventListener('input', () => {
+    let val = cardNumberInput.value.replace(/\D/g,'').substring(0,16);
+    val = val.replace(/(\d{4})/g, '$1 ').trim();
+    cardNumberInput.value = val;
+    previewNumber.textContent = val || '#### #### #### ####';
+
+    const brand = detectCardBrand(val);
+    cardBrandDiv.innerHTML = brand ? `<img src="${brands[brand]}" alt="${brand}">` : '';
+  });
+
+  expiryInput.addEventListener('input', () => {
+    let val = expiryInput.value.replace(/\D/g,'').substring(0,4); 
+    if(val.length > 2){
+        val = val.substring(0,2) + '/' + val.substring(2);
+    }
+    expiryInput.value = val;
+    previewExpiry.textContent = val || 'MM/YY';
+  });
+
+  // Validate before submit
+  form.addEventListener('submit', function(e) {
+      const expiry = expiryInput.value.trim();
+      if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiry)) {
+          alert('Enter a valid expiry date in MM/YY format');
+          e.preventDefault();
+          return;
+      }
+  });
+
+  cvvInput.addEventListener('input', () => {
+    // Remove non-digit characters
+    cvvInput.value = cvvInput.value.replace(/\D/g,'');
+    previewCVV.textContent = cvvInput.value || 'CVV';
+});
+
+// Validate on submit
+cvvInput.addEventListener('input', () => {
+    // Allow only digits
+    cvvInput.value = cvvInput.value.replace(/\D/g,'');
+    previewCVV.textContent = cvvInput.value || 'CVV';
+});
+
+form.addEventListener('submit', function(e) {
+    const cardNumber = cardNumberInput.value.replace(/\s/g,'');
+    const cvv = cvvInput.value.trim();
+    const brand = detectCardBrand(cardNumber);
+
+    if (brand === 'amex' && cvv.length !== 4) {
+        alert('Amex CVV must be 4 digits');
+        e.preventDefault();
+        return;
+    } else if (brand !== 'amex' && cvv.length !== 3) {
+        alert('CVV must be 3 digits');
+        e.preventDefault();
+        return;
+    }
+});
+
+  // PayPal Button
+  function renderPaypalButton() {
+    const container = document.getElementById('paypal-button-container');
+    container.innerHTML = ''; // reset
+    paypal.Buttons({
+      createOrder: (data, actions) => {
+        const amount = form.amount.value;
+        return actions.order.create({ purchase_units: [{ amount: { value: amount } }] });
+      },
+      onApprove: (data, actions) => {
+        return actions.order.capture().then(() => {
+          sendBookingEmail();
+          UIkit.modal('#thankyou-modal').show();
+        });
+      }
+    }).render('#paypal-button-container');
+  }
+
+  // Handle Form Submit
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const method = paymentSelect.value;
+
+    if (method === 'card') {
+      UIkit.modal('#loading-modal').show();
+      setTimeout(() => {
+        UIkit.modal('#loading-modal').hide();
+        sendBookingEmail();
+        UIkit.modal('#thankyou-modal').show();
+        form.reset();
+        localStorage.removeItem('bookingData');
+      }, 2000);
+    } else if (method === 'bank' || method === 'cash') {
+      sendBookingEmail();
+      UIkit.modal('#thankyou-modal').show();
+      form.reset();
+      localStorage.removeItem('bookingData');
+    }
+  });
+
+  // Pricing for different room types
+const roomPrices = {
+  'standard': 500,         // Standard Suites
+  'deluxe-family': 1500,   // Deluxe Family Suites
+  'deluxe-honeymoon': 2000 // Deluxe Honeymoon Suites
+};
+
+// Human-readable names
+const roomKeys = {
+  'Standard Suites': 'standard',
+  'Deluxe Family Suites': 'deluxe-family',
+  'Deluxe Honeymoon Suites': 'deluxe-honeymoon'
+};
+
+// Calculate amount
+function calculateAmount() {
+  const roomReadable = form.room.value; // e.g., "Standard Suites"
+  const room = roomKeys[roomReadable];  // convert to key for pricing
+  const guests = parseInt(form.guests.value) || 1;
+  const arrival = new Date(form.arrival.value);
+  const departure = new Date(form.departure.value);
+
+  // Calculate number of nights
+  let nights = Math.ceil((departure - arrival) / (1000 * 60 * 60 * 24));
+  if (nights <= 0) nights = 1;
+
+  let pricePerNight = roomPrices[room] || 0;
+  const totalAmount = pricePerNight * guests * nights;
+
+  form.amount.value = totalAmount.toFixed(2);
+}
+
+// Event listeners
+form.room.addEventListener('input', calculateAmount);
+form.guests.addEventListener('input', calculateAmount);
+form.arrival.addEventListener('change', calculateAmount);
+form.departure.addEventListener('change', calculateAmount);
+
+  // Send Booking Details to Server
+  async function sendBookingEmail() {
+    const room = form.room.value;
+    const data = {
+      email: form.email.value,
+      arrival: form.arrival.value,
+      departure: form.departure.value,
+      guests: form.guests.value,
+      room: roomNames[room] || room, // send readable name
+      amount: form.amount.value,
+      paymentMethod: paymentSelect.value,
+      paymentDateTime: new Date().toLocaleString()
+    };
+
+
+    try {
+      const res = await fetch('http://localhost:5000/send-booking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const result = await res.json();
+      console.log('Booking email sent:', result);
+    } catch (err) {
+      console.error('Error sending booking email:', err);
+    }
+  }
+</script>
+</body>
+</html>
